@@ -149,6 +149,9 @@ type Theme = {
   bodyFont: string
   layout: 'editorial' | 'airy' | 'grid' | 'compact'
   tags: string[]
+  category?: string
+  preview?: string
+  templateName?: string
 }
 
 type Project = {
@@ -205,6 +208,9 @@ const themes: Theme[] = [
     bodyFont: 'DM Sans',
     layout: 'editorial',
     tags: ['Élégant', 'Lumineux'],
+    category: 'Éditorial',
+    preview: 'editorial',
+    templateName: 'The weekend',
   },
   {
     id: 'modern-night',
@@ -220,6 +226,9 @@ const themes: Theme[] = [
     bodyFont: 'DM Sans',
     layout: 'grid',
     tags: ['Nocturne', 'Graphique'],
+    category: 'Nocturne',
+    preview: 'nocturne',
+    templateName: 'After dark',
   },
   {
     id: 'terracotta-garden',
@@ -235,6 +244,9 @@ const themes: Theme[] = [
     bodyFont: 'DM Sans',
     layout: 'airy',
     tags: ['Chaleureux', 'Naturel'],
+    category: 'Photo',
+    preview: 'garden',
+    templateName: 'Garden notes',
   },
   {
     id: 'electric-pulse',
@@ -250,6 +262,81 @@ const themes: Theme[] = [
     bodyFont: 'DM Sans',
     layout: 'compact',
     tags: ['Vibrant', 'Festival'],
+    category: 'Coloré',
+    preview: 'playful',
+    templateName: 'Electric pulse',
+  },
+  {
+    id: 'paper-garden',
+    name: 'Paper Garden',
+    eyebrow: 'Romantique illustré',
+    description: 'Une composition délicate entre papier, fleurs et photographie.',
+    accent: '#c77f77',
+    accentSoft: '#f0d8d2',
+    background: '#f6f2ec',
+    ink: '#302b2a',
+    surface: '#fffdf8',
+    displayFont: 'Playfair Display',
+    bodyFont: 'DM Sans',
+    layout: 'editorial',
+    tags: ['Floral', 'Doux'],
+    category: 'Éditorial',
+    preview: 'paper',
+    templateName: 'Paper & petals',
+  },
+  {
+    id: 'film-stills',
+    name: 'Film Stills',
+    eyebrow: 'Photo immersive',
+    description: 'Une expérience pleine page qui laisse la place aux images.',
+    accent: '#ded0a0',
+    accentSoft: '#3b3b35',
+    background: '#1c1c1a',
+    ink: '#f4eee3',
+    surface: '#272724',
+    displayFont: 'Playfair Display',
+    bodyFont: 'DM Sans',
+    layout: 'airy',
+    tags: ['Photo', 'Cinéma'],
+    category: 'Photo',
+    preview: 'film',
+    templateName: 'Film stills',
+  },
+  {
+    id: 'white-space',
+    name: 'White Space',
+    eyebrow: 'Minimal typographique',
+    description: 'Une architecture nette, calme et très éditoriale.',
+    accent: '#cb6c81',
+    accentSoft: '#f1e6e4',
+    background: '#f8f7f3',
+    ink: '#1f2220',
+    surface: '#ffffff',
+    displayFont: 'DM Sans',
+    bodyFont: 'DM Sans',
+    layout: 'compact',
+    tags: ['Minimal', 'Typo'],
+    category: 'Minimal',
+    preview: 'minimal',
+    templateName: 'White space',
+  },
+  {
+    id: 'sunset-club',
+    name: 'Sunset Club',
+    eyebrow: 'Fête colorée',
+    description: 'Une invitation vive et généreuse pour les événements qui rassemblent.',
+    accent: '#f0bd69',
+    accentSoft: '#e68b73',
+    background: '#f7e8d1',
+    ink: '#422b2a',
+    surface: '#fff7e8',
+    displayFont: 'DM Sans',
+    bodyFont: 'DM Sans',
+    layout: 'grid',
+    tags: ['Coloré', 'Festif'],
+    category: 'Coloré',
+    preview: 'sunset',
+    templateName: 'Sunset club',
   },
 ]
 
@@ -768,11 +855,16 @@ function PageStructureCard({ page, index, selected, onClick, onRename, onDuplica
 }
 
 function DesignView({ project, theme, onTheme, onTab }: { project: Project; theme: Theme; onTheme: (id: string) => void; onTab: (tab: EditorTab) => void }) {
-  return <div className="editor-body design-body"><EditorSidebar project={project} selectedPageId="home" onPage={() => undefined} onAddPage={() => undefined} /><main className="design-main"><div className="view-heading"><div><div className="mini-breadcrumb"><span>Projet</span><Icon name="chevron-right" size={12} /><span>Design</span></div><h1>Donnez-lui une direction</h1><p>Commencez par un système visuel. Chaque page héritera de vos choix, sans être enfermée dans un template.</p></div><div className="heading-tools"><button type="button" className="quiet-button"><Icon name="undo" size={15} />Réinitialiser</button><button type="button" className="primary-button" onClick={() => onTab('build')}><Icon name="layout" size={15} />Ouvrir le builder</button></div></div><div className="design-stage"><div className="design-stage-header"><div><span className="sitemap-kicker">Direction artistique</span><h2>Quelle sensation doit rester ?</h2></div><span className="design-stage-note"><Icon name="sparkles" size={14} />Modifiable à tout moment</span></div><div className="theme-grid">{themes.map((item) => <ThemeCard key={item.id} theme={item} active={theme.id === item.id} onSelect={() => onTheme(item.id)} />)}</div></div><div className="design-controls"><section className="design-control-card palette-control"><div className="control-card-header"><div><span className="eyebrow">01 / Couleurs</span><h3>La palette</h3></div><button type="button" className="control-edit"><Icon name="edit" size={14} />Modifier</button></div><div className="palette-preview"><div className="palette-large" style={{ background: theme.accent }} /><div className="palette-large" style={{ background: theme.accentSoft }} /><div className="palette-large" style={{ background: theme.background }} /><div className="palette-large" style={{ background: theme.ink }} /><div className="palette-labels"><span>Accent</span><span>Soft</span><span>Fond</span><span>Texte</span></div></div><p>Une base de {theme.tags.join(' et ').toLowerCase()} pour garder chaque page cohérente.</p></section><section className="design-control-card type-control"><div className="control-card-header"><div><span className="eyebrow">02 / Typographie</span><h3>Le ton de voix</h3></div><button type="button" className="control-edit"><Icon name="edit" size={14} />Modifier</button></div><div className="type-preview" style={{ '--theme-ink': theme.ink } as CSSProperties}><span style={{ fontFamily: theme.displayFont }}>Aa</span><div><strong style={{ fontFamily: theme.displayFont }}>Un moment à partager</strong><small style={{ fontFamily: theme.bodyFont }}>La bonne information, au bon moment.</small></div></div><div className="font-meta"><span>{theme.displayFont}</span><span>{theme.bodyFont}</span></div></section><section className="design-control-card component-control"><div className="control-card-header"><div><span className="eyebrow">03 / Composants</span><h3>Le langage visuel</h3></div><button type="button" className="control-edit"><Icon name="sliders" size={14} />Régler</button></div><div className="component-previews"><div className="fake-card"><span /><span /><span /></div><div className="fake-button" style={{ background: theme.accent }}>Confirmer <Icon name="arrow-right" size={13} /></div><div className="fake-input"><Icon name="search" size={13} />Votre réponse</div></div><div className="component-labels"><span>Cards</span><span>Boutons</span><span>Formulaires</span></div></section></div></main><aside className="design-preview-panel"><div className="preview-panel-heading"><span>Aperçu vivant</span><div><IconButton name="monitor" label="Aperçu desktop" active size={14} /><IconButton name="phone" label="Aperçu mobile" size={14} /></div></div><div className={`mini-site-preview ${theme.id}`} style={{ background: theme.background, color: theme.ink }}><div className="mini-site-nav"><span>{project.title.toUpperCase()}</span><span><i /> MENU</span></div><div className="mini-site-hero"><span className="mini-site-eyebrow" style={{ color: theme.accent }}>{project.subtitle.toUpperCase()}</span><h3 style={{ fontFamily: theme.displayFont }}>{project.title.split(' & ')[0]} <em>&</em><br />{project.title.split(' & ')[1] ?? 'vous'}</h3><p>{project.date}</p><button type="button" style={{ background: theme.accent, color: theme.background }}>Découvrir <Icon name="arrow-right" size={12} /></button></div><div className="mini-site-shape" style={{ background: theme.accentSoft }}><div style={{ borderColor: theme.accent }}><span>{project.location.split(',')[0]}</span><strong>Un événement<br />à votre image.</strong></div></div><div className="mini-site-lines"><span /><span /><span /></div></div><div className="preview-panel-footer"><span><Icon name="check-circle" size={13} />Desktop & mobile inclus</span><button type="button" onClick={onTab.bind(null, 'build')}>Continuer <Icon name="arrow-right" size={13} /></button></div></aside></div>
+  const [filter, setFilter] = useState('Tous')
+  const [search, setSearch] = useState('')
+  const categories = ['Tous', 'Éditorial', 'Photo', 'Minimal', 'Coloré', 'Nocturne']
+  const visibleThemes = themes.filter((item) => (filter === 'Tous' || item.category === filter) && `${item.name} ${item.description} ${item.tags.join(' ')}`.toLowerCase().includes(search.toLowerCase()))
+
+  return <div className="editor-body design-body design-library-body"><EditorSidebar project={project} selectedPageId="home" onPage={() => undefined} onAddPage={() => undefined} /><main className="design-main design-library-main"><div className="view-heading"><div><div className="mini-breadcrumb"><span>Projet</span><Icon name="chevron-right" size={12} /><span>Design</span></div><h1>Choisissez une direction</h1><p>Partez d’une expérience complète, puis adaptez la palette, la typographie et chaque bloc à votre événement.</p></div><div className="heading-tools"><button type="button" className="quiet-button"><Icon name="sparkles" size={15} />Générer une direction</button><button type="button" className="primary-button" onClick={() => onTab('build')}><Icon name="layout" size={15} />Ouvrir le builder</button></div></div><div className="design-library-toolbar"><div className="design-filter-tabs">{categories.map((category) => <button type="button" key={category} className={filter === category ? 'active' : ''} onClick={() => setFilter(category)}>{category}</button>)}</div><label className="design-search"><Icon name="search" size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher un style" /></label><button type="button" className="design-sort"><Icon name="sliders" size={14} />Trier <Icon name="chevron-down" size={12} /></button></div><div className="design-gallery-heading"><div><span className="sitemap-kicker">Bibliothèque de designs</span><h2>{filter === 'Tous' ? 'Des points de départ, pas des cages.' : filter}</h2></div><span>{visibleThemes.length} propositions</span></div><div className="theme-grid design-gallery-grid">{visibleThemes.map((item) => <ThemeCard key={item.id} theme={item} active={theme.id === item.id} onSelect={() => onTheme(item.id)} />)}</div>{visibleThemes.length === 0 && <div className="design-empty"><Icon name="search" size={20} /><strong>Aucun style trouvé</strong><span>Essayez une autre recherche ou revenez à tous les designs.</span></div>}<div className="design-library-note"><div className="design-note-icon"><Icon name="palette" size={16} /></div><div><span className="eyebrow">Après le choix</span><strong>Chaque détail restera réglable.</strong><p>Le design donne le rythme. Vos données, vos pages et vos sections restent indépendantes.</p></div><button type="button" onClick={() => onTab('build')}>Personnaliser <Icon name="arrow-right" size={14} /></button></div></main><aside className="design-preview-panel design-library-preview"><div className="preview-panel-heading"><span>Aperçu du design actif</span><div><IconButton name="monitor" label="Aperçu desktop" active size={14} /><IconButton name="phone" label="Aperçu mobile" size={14} /></div></div><div className={`mini-site-preview ${theme.id}`} style={{ background: theme.background, color: theme.ink }}><div className="mini-site-nav"><span>{project.title.toUpperCase()}</span><span><i /> MENU</span></div><div className="mini-site-hero"><span className="mini-site-eyebrow" style={{ color: theme.accent }}>{theme.templateName?.toUpperCase() ?? theme.eyebrow.toUpperCase()}</span><h3 style={{ fontFamily: theme.displayFont }}>{project.title.split(' & ')[0]} <em>&</em><br />{project.title.split(' & ')[1] ?? 'vous'}</h3><p>{project.date}</p><button type="button" style={{ background: theme.accent, color: theme.background }}>Découvrir <Icon name="arrow-right" size={12} /></button></div><div className="mini-site-shape" style={{ background: theme.accentSoft }}><div style={{ borderColor: theme.accent }}><span>{project.location.split(',')[0]}</span><strong>{project.tagline || 'Un événement à votre image.'}</strong></div></div><div className="mini-site-lines"><span /><span /><span /></div></div><div className="preview-panel-footer"><span><Icon name="check-circle" size={13} />Design actif : {theme.name}</span><button type="button" onClick={() => onTab('build')}>Personnaliser <Icon name="arrow-right" size={13} /></button></div></aside></div>
 }
 
 function ThemeCard({ theme, active, onSelect }: { theme: Theme; active: boolean; onSelect: () => void }) {
-  return <button type="button" className={`theme-card ${active ? 'active' : ''}`} onClick={onSelect}><div className="theme-thumb" style={{ background: theme.background, color: theme.ink }}><div className="theme-thumb-top"><span style={{ background: theme.accent }} /><span /><span /></div><div className="theme-thumb-copy"><small style={{ color: theme.accent }}>{theme.eyebrow}</small><strong style={{ fontFamily: theme.displayFont }}>A moment<br /><i>to remember</i></strong><span style={{ background: theme.accent }} /></div><div className="theme-thumb-block" style={{ background: theme.accentSoft }}><span /><span /></div></div><div className="theme-card-meta"><div><span className="eyebrow">{theme.eyebrow}</span><h3>{theme.name}</h3><p>{theme.description}</p></div><span className="theme-radio">{active && <Icon name="check" size={13} />}</span></div><div className="theme-tags">{theme.tags.map((tag) => <span key={tag}>{tag}</span>)}</div></button>
+  return <button type="button" className={`theme-card design-template-card ${active ? 'active' : ''}`} onClick={onSelect}><div className={`theme-thumb template-thumb ${theme.preview ?? 'editorial'}`} style={{ background: theme.background, color: theme.ink }}><div className="template-browser-bar"><span className="template-browser-brand" style={{ color: theme.accent }}>✦</span><span /><span /><span /></div><div className="template-nav"><span>{theme.templateName ?? theme.name}</span><span>INFO&nbsp;&nbsp; RSVP</span></div><div className="template-hero-copy"><small style={{ color: theme.accent }}>{theme.eyebrow}</small><strong style={{ fontFamily: theme.displayFont }}>{theme.preview === 'film' ? <>We are<br />getting <i>married</i></> : theme.preview === 'minimal' ? <>MATHILDE<br /><i>&amp; JOHAN</i></> : theme.preview === 'playful' || theme.preview === 'sunset' ? <>THE<br /><i>PARTY</i></> : <>{theme.name.split(' ')[0]}<br /><i>&amp; forever</i></>}</strong><span className="template-rule" style={{ background: theme.accent }} /><em>{theme.preview === 'paper' ? 'A story in bloom' : theme.preview === 'nocturne' ? 'A night to remember' : '12 — 09 — 26'}</em></div><div className="template-art" style={{ background: theme.accentSoft, borderColor: theme.accent }}><span>{theme.preview === 'garden' || theme.preview === 'film' ? 'PHOTO / 01' : theme.preview === 'paper' ? '✿' : <>YOUR<br />MOMENT</>}</span></div><div className="template-footer"><span>THE WEEKEND</span><span>↗</span></div></div><div className="theme-card-meta"><div><span className="eyebrow">{theme.category ?? theme.eyebrow}</span><h3>{theme.name}</h3><p>{theme.description}</p></div><span className="theme-radio">{active && <Icon name="check" size={13} />}</span></div><div className="theme-tags">{theme.tags.map((tag) => <span key={tag}>{tag}</span>)}</div></button>
 }
 
 function BuilderView({ project, theme, selectedPage, selectedSection, onPage, onSection, onAddPage, onAddSection, onProjectUpdate, onSectionAction, onPreview }: { project: Project; theme: Theme; selectedPage: Page; selectedSection: string; onPage: (id: string) => void; onSection: (section: string) => void; onAddPage: () => void; onAddSection: (sectionName?: string) => void; onProjectUpdate: (field: 'title' | 'date' | 'location' | 'tagline' | 'description' | 'ctaLabel', value: string) => void; onSectionAction: (sectionName: string, action: 'duplicate' | 'delete' | 'up' | 'down') => void; onPreview: () => void }) {
