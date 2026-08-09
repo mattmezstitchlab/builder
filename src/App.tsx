@@ -169,6 +169,15 @@ type Asset = {
   type: string
 }
 
+type HubAttachment = {
+  id: string
+  name: string
+  type: string
+  size: number
+  url?: string
+  status: 'analyzing' | 'ready'
+}
+
 type Theme = {
   id: string
   name: string
@@ -521,6 +530,7 @@ function App() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [editorTab, setEditorTab] = useState<EditorTab>('structure')
   const [showNewEvent, setShowNewEvent] = useState(false)
+  const [showCommandHub, setShowCommandHub] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [search, setSearch] = useState('')
   const [selectedPageId, setSelectedPageId] = useState('home')
@@ -754,9 +764,10 @@ function App() {
           allProjectsCount={projects.length}
           search={search}
           onSearch={setSearch}
-          onNew={() => setShowNewEvent(true)}
+          onNew={() => setShowCommandHub(true)}
           onOpen={openProject}
         />
+        {showCommandHub && <CommandHubModal onClose={() => setShowCommandHub(false)} onContinue={() => { setShowCommandHub(false); setShowNewEvent(true) }} />}
         {showNewEvent && <NewEventModal onClose={() => setShowNewEvent(false)} onCreate={createProject} />}
         <NoticeToaster />
       </div>
@@ -905,6 +916,63 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
       <div className="project-card-footer"><span className={`status-pill ${project.status.toLowerCase().replace(' ', '-')}`}><i />{project.status}</span><span>{project.lastEdited}</span><span className="project-progress"><span style={{ width: `${project.progress}%` }} /></span></div>
     </article>
   )
+}
+
+
+function CommandHubModal({ onClose, onContinue }: { onClose: () => void; onContinue: () => void }) {
+  const [prompt, setPrompt] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [dropActive, setDropActive] = useState(false)
+  const [accept, setAccept] = useState('image/*,.pdf,.doc,.docx,.txt,.md')
+  const [attachments, setAttachments] = useState<HubAttachment[]>([])
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysisReady, setAnalysisReady] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function openFilePicker(nextAccept: string) {
+    setAccept(nextAccept)
+    setMenuOpen(false)
+    window.setTimeout(() => fileInputRef.current?.click(), 0)
+  }
+
+  function analyzeFiles(files: File[]) {
+    const incoming: HubAttachment[] = files.map((file) => ({ id: `hub-${Date.now()}-${file.name}`, name: file.name, type: file.type || 'application/octet-stream', size: file.size, url: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined, status: 'analyzing' }))
+    if (!incoming.length) return
+    setAttachments((current) => [...current, ...incoming])
+    setAnalyzing(true)
+    setAnalysisReady(false)
+    window.setTimeout(() => {
+      setAttachments((current) => current.map((item) => incoming.some((next) => next.id === item.id) ? { ...item, status: 'ready' } : item))
+      setAnalyzing(false)
+      setAnalysisReady(true)
+    }, 900)
+  }
+
+  function onFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    if (event.target.files) analyzeFiles(Array.from(event.target.files))
+    event.currentTarget.value = ''
+  }
+
+  function runAnalysis() {
+    if (!prompt.trim() && !attachments.length) {
+      notify('Décrivez une intention ou ajoutez une référence pour commencer.')
+      return
+    }
+    setAnalyzing(true)
+    setAnalysisReady(false)
+    window.setTimeout(() => { setAnalyzing(false); setAnalysisReady(true) }, 850)
+  }
+
+  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setDropActive(false)
+    analyzeFiles(Array.from(event.dataTransfer.files))
+  }
+
+  const hasImage = attachments.some((item) => item.type.startsWith('image/'))
+  const hasDocument = attachments.some((item) => !item.type.startsWith('image/'))
+
+  return <div className="command-hub-backdrop" onDragOver={(event) => { event.preventDefault(); setDropActive(true) }} onDragLeave={() => setDropActive(false)} onDrop={handleDrop}><section className={`command-hub ${dropActive ? 'drop-active' : ''}`} role="dialog" aria-modal="true" aria-labelledby="command-hub-title"><header className="command-hub-header"><button type="button" className="command-hub-brand" onClick={onClose}><BrandMark /><span>atelier</span></button><span className="command-hub-context">New event workspace</span><button type="button" className="command-hub-close" onClick={onClose}><Icon name="x" size={17} /></button></header><main className="command-hub-main"><span className="eyebrow"><Icon name="sparkles" size={14} />Atelier intelligence</span><h1 id="command-hub-title">Qu'est-ce qu'on<br /><em>construit aujourd'hui ?</em></h1><p className="command-hub-lead">Décrivez un événement, importez une référence ou déposez vos documents. Atelier transforme les éléments bruts en une structure claire.</p><div className="command-composer"><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) runAnalysis() }} placeholder="Ex. Crée un mini-site pour le mariage de Mathilde et Johan, avec un style éditorial et une page RSVP..." /><div className="composer-bottom"><div className="composer-left"><button type="button" className={`composer-plus ${menuOpen ? 'active' : ''}`} onClick={() => setMenuOpen((current) => !current)} aria-label="Ajouter une source"><Icon name="plus" size={18} /></button><span className="composer-hint">Décrire, importer ou déposer</span>{attachments.length > 0 && <span className="composer-count">{attachments.length} source{attachments.length > 1 ? 's' : ''}</span>}</div><button type="button" className="composer-submit" onClick={runAnalysis}>{analyzing ? 'Analyse...' : analysisReady ? 'Continuer' : 'Lancer l’analyse'} <Icon name="arrow-right" size={15} /></button></div>{menuOpen && <div className="command-source-menu"><div className="source-menu-heading"><span>Ajouter au projet</span><button type="button" onClick={() => setMenuOpen(false)}><Icon name="x" size={13} /></button></div><button type="button" onClick={() => openFilePicker('image/*')}><span className="source-icon"><Icon name="image" size={16} /></span><span><strong>Capture d’écran</strong><small>Reproduire un design ou une interface</small></span><Icon name="plus" size={13} /></button><button type="button" onClick={() => openFilePicker('.pdf,.doc,.docx,.txt,.md')}><span className="source-icon"><Icon name="layers" size={16} /></span><span><strong>Document ou PDF</strong><small>OCR, devis, contrat, facture, brief</small></span><Icon name="plus" size={13} /></button><button type="button" onClick={() => { setPrompt((current) => current || 'Voici une note à transformer en structure claire : '); setMenuOpen(false) }}><span className="source-icon"><Icon name="edit" size={16} /></span><span><strong>Note ou texte</strong><small>Coller une idée, un brief ou une liste</small></span><Icon name="plus" size={13} /></button><button type="button" onClick={() => { setPrompt((current) => current || 'Reprends le design de ce site : '); setMenuOpen(false) }}><span className="source-icon"><Icon name="link" size={16} /></span><span><strong>URL ou inspiration</strong><small>Analyser une direction visuelle</small></span><Icon name="plus" size={13} /></button></div>}</div><input ref={fileInputRef} type="file" accept={accept} multiple onChange={onFileChange} className="command-file-input" /><div className="command-dropzone"><Icon name="grip" size={16} /><span>ou déposez vos fichiers ici</span><small>PNG, JPG, PDF, DOCX, TXT · jusqu’à 2,5 Mo par fichier</small></div>{attachments.length > 0 && <div className="command-attachments">{attachments.map((attachment) => <div className="command-attachment" key={attachment.id}>{attachment.url ? <img src={attachment.url} alt="" /> : <span className="attachment-document"><Icon name="layers" size={16} /></span>}<div><strong>{attachment.name}</strong><small>{attachment.status === 'analyzing' ? 'Analyse en cours...' : attachment.type.startsWith('image/') ? 'Référence visuelle détectée' : 'Document prêt pour OCR'} · {Math.max(1, Math.round(attachment.size / 1024))} Ko</small></div><Icon name={attachment.status === 'ready' ? 'check-circle' : 'clock'} size={15} /></div>)}</div>}{(analysisReady || analyzing) && <div className={`command-analysis-card ${analyzing ? 'is-analyzing' : ''}`}><div className="analysis-orbit"><Icon name={analyzing ? 'sparkles' : 'check-circle'} size={17} /></div><div><span className="eyebrow">{analyzing ? 'Analyse en cours' : 'Première lecture terminée'}</span><strong>{analyzing ? 'Atelier lit vos sources...' : hasImage && hasDocument ? 'Design et documents identifiés.' : hasImage ? 'Direction visuelle identifiée.' : 'Informations structurables détectées.'}</strong><p>{analyzing ? 'OCR · classification · structure · suggestion' : hasImage ? 'Navigation, hero, rythme, composants et style pourront être repris dans une proposition.' : 'Les dates, noms, lieux, montants et sections peuvent être organisés dans votre projet.'}</p></div><button type="button" onClick={onContinue}>{analyzing ? 'Préparer...' : 'Valider la base'} <Icon name="arrow-right" size={14} /></button></div>}<div className="command-suggestions"><span>Essayez par exemple</span><button type="button" onClick={() => setPrompt('Crée un site pour un festival de musique sur trois jours avec line-up, programme par scène et billetterie.')}>Créer un festival</button><button type="button" onClick={() => setPrompt('Reprends le style de cette capture et propose une page d’accueil éditoriale.')}>Reprendre un design</button><button type="button" onClick={() => setPrompt('Analyse ce document et transforme les informations importantes en pages et sections.')}>Structurer un document</button></div></main><footer className="command-hub-footer"><span><Icon name="lock" size={13} />Vos sources restent attachées à ce projet.</span><span>Atelier peut analyser une image, un texte ou une structure.</span></footer></section></div>
 }
 
 function NewEventModal({ onClose, onCreate }: { onClose: () => void; onCreate: (draft: NewEventDraft) => void }) {
