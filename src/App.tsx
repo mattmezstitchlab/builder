@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 
 type IconName =
@@ -162,6 +162,13 @@ type Page = {
   accent?: string
 }
 
+type Asset = {
+  id: string
+  name: string
+  url: string
+  type: string
+}
+
 type Theme = {
   id: string
   name: string
@@ -195,6 +202,7 @@ type Project = {
   thumbClass: string
   themeId: string
   pages: Page[]
+  assets?: Asset[]
   lastEdited: string
   guests?: number
   tagline?: string
@@ -507,6 +515,8 @@ function IconButton({ name, label, onClick, active = false, size = 18 }: { name:
 
 function App() {
   const [projects, setProjects] = useState<Project[]>(readProjects)
+  const projectsRef = useRef(projects)
+  const [history, setHistory] = useState<{ past: Project[][]; future: Project[][] }>({ past: [], future: [] })
   const [view, setView] = useState<'dashboard' | 'editor'>('dashboard')
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [editorTab, setEditorTab] = useState<EditorTab>('structure')
@@ -522,8 +532,42 @@ function App() {
   const filteredProjects = projects.filter((project) => `${project.title} ${project.subtitle} ${project.location}`.toLowerCase().includes(search.toLowerCase()))
 
   useEffect(() => {
+    projectsRef.current = projects
     localStorage.setItem('atelier-projects', JSON.stringify(projects))
   }, [projects])
+
+  function applyProjects(updater: (current: Project[]) => Project[]) {
+    const current = projectsRef.current
+    const next = updater(current)
+    if (JSON.stringify(current) === JSON.stringify(next)) return
+    setHistory((currentHistory) => ({ past: [...currentHistory.past, current].slice(-40), future: [] }))
+    projectsRef.current = next
+    setProjects(next)
+  }
+
+  function undo() {
+    setHistory((currentHistory) => {
+      const previous = currentHistory.past[currentHistory.past.length - 1]
+      if (!previous) return currentHistory
+      const current = projectsRef.current
+      projectsRef.current = previous
+      setProjects(previous)
+      notify('Modification annulée.')
+      return { past: currentHistory.past.slice(0, -1), future: [current, ...currentHistory.future] }
+    })
+  }
+
+  function redo() {
+    setHistory((currentHistory) => {
+      const next = currentHistory.future[0]
+      if (!next) return currentHistory
+      const current = projectsRef.current
+      projectsRef.current = next
+      setProjects(next)
+      notify('Modification rétablie.')
+      return { past: [...currentHistory.past, current], future: currentHistory.future.slice(1) }
+    })
+  }
 
   function openProject(id: string, tab: EditorTab = 'structure') {
     setActiveProjectId(id)
@@ -536,7 +580,7 @@ function App() {
 
   function updateActiveProject(updater: (project: Project) => Project) {
     if (!activeProjectId) return
-    setProjects((current) => current.map((project) => project.id === activeProjectId ? updater(project) : project))
+    applyProjects((current) => current.map((project) => project.id === activeProjectId ? updater(project) : project))
   }
 
   function createProject(draft: NewEventDraft) {
@@ -562,7 +606,7 @@ function App() {
       description: 'Ajoutez quelques mots pour donner le ton de votre événement.',
       ctaLabel: draft.type === 'festival' ? 'Voir le programme' : draft.type === 'corporate' || draft.type === 'conference' ? 'S’inscrire à l’événement' : 'Découvrir l’événement',
     }
-    setProjects((current) => [newProject, ...current])
+    applyProjects((current) => [newProject, ...current])
     setShowNewEvent(false)
     setActiveProjectId(newProject.id)
     setSelectedPageId('home')
@@ -583,6 +627,25 @@ function App() {
 
   function updateProjectField(field: 'title' | 'date' | 'location' | 'tagline' | 'description' | 'ctaLabel', value: string) {
     updateActiveProject((project) => ({ ...project, [field]: value, lastEdited: 'à l’instant' }))
+  }
+
+  function uploadAsset(file: File) {
+    if (!file.type.startsWith('image/')) {
+      notify('Pour le moment, importez une image JPG, PNG, GIF ou WebP.')
+      return
+    }
+    if (file.size > 2_500_000) {
+      notify('Cette image dépasse 2,5 Mo. Choisissez une version plus légère.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const url = typeof reader.result === 'string' ? reader.result : ''
+      if (!url) return
+      updateActiveProject((project) => ({ ...project, assets: [...(project.assets ?? []), { id: `asset-${Date.now()}`, name: file.name, url, type: file.type }], lastEdited: 'à l’instant' }))
+      notify('Image ajoutée aux assets du projet.')
+    }
+    reader.readAsDataURL(file)
   }
 
   function addSection(sectionName = 'Nouvelle section') {
@@ -665,6 +728,24 @@ function App() {
     }))
   }
 
+  function reorderSection(draggedSection: string, targetSection: string) {
+    if (draggedSection === targetSection) return
+    updateActiveProject((project) => ({
+      ...project,
+      pages: project.pages.map((page) => {
+        if (page.id !== selectedPageId) return page
+        const from = page.sections.indexOf(draggedSection)
+        const to = page.sections.indexOf(targetSection)
+        if (from < 0 || to < 0) return page
+        const sections = [...page.sections]
+        const [dragged] = sections.splice(from, 1)
+        sections.splice(to, 0, dragged)
+        return { ...page, sections }
+      }),
+      lastEdited: 'à l’instant',
+    }))
+  }
+
   if (view === 'dashboard') {
     return (
       <div className="app-shell">
@@ -699,6 +780,10 @@ function App() {
         onTab={setEditorTab}
         onPage={setSelectedPageId}
         onSection={setSelectedSection}
+        onSectionReorder={reorderSection}
+        onUploadAsset={uploadAsset}
+        onUndo={undo}
+        onRedo={redo}
         onAddPage={addPage}
         onAddSection={addSection}
         onProjectUpdate={updateProjectField}
@@ -863,7 +948,7 @@ function ProjectTabBar({ project, onBack }: { project: Project; onBack: () => vo
   return <div className="framer-project-tabbar"><div className="framer-window-brand"><button type="button" className="window-dot dot-red" aria-label="Fermer" onClick={onBack} /><button type="button" className="window-dot dot-yellow" aria-label="Réduire" onClick={() => notify('Le mode réduction sera disponible dans l’application desktop.')} /><button type="button" className="window-dot dot-green" aria-label="Agrandir" onClick={() => notify('Le projet est déjà ouvert dans son espace maximum.')} /></div><div className="framer-app-tabs"><button type="button" className="framer-home-tab" onClick={onBack}><BrandMark /><span>atelier</span></button><button type="button" className="framer-file-tab muted-tab" onClick={onBack}><span className="file-tab-icon"><Icon name="edit" size={12} /></span><span>All projects</span></button><button type="button" className="framer-file-tab active" onClick={() => notify(`Projet actif : ${project.title}`)}><span className="file-tab-icon"><Icon name="layers" size={12} /></span><span>{project.title}</span><Icon name="x" size={12} /></button><button type="button" className="framer-add-tab" aria-label="Nouvel onglet" onClick={() => notify('Créez un nouvel événement depuis le dashboard.')}><Icon name="plus" size={16} /></button></div><div className="framer-tabbar-spacer" /></div>
 }
 
-function Editor({ project, theme, editorTab, selectedPageId, selectedSection, onBack, onTab, onPage, onSection, onAddPage, onAddSection, onProjectUpdate, onRenamePage, onDuplicatePage, onDeletePage, onMovePage, onCyclePageVisibility, onSectionAction, onTheme, onPreview, onPublish }: { project: Project; theme: Theme; editorTab: EditorTab; selectedPageId: string; selectedSection: string; onBack: () => void; onTab: (tab: EditorTab) => void; onPage: (id: string) => void; onSection: (section: string) => void; onAddPage: () => void; onAddSection: (sectionName?: string) => void; onProjectUpdate: (field: 'title' | 'date' | 'location' | 'tagline' | 'description' | 'ctaLabel', value: string) => void; onRenamePage: (pageId: string) => void; onDuplicatePage: (pageId: string) => void; onDeletePage: (pageId: string) => void; onMovePage: (pageId: string, direction: 'up' | 'down') => void; onCyclePageVisibility: (pageId: string) => void; onSectionAction: (sectionName: string, action: 'duplicate' | 'delete' | 'up' | 'down') => void; onTheme: (id: string) => void; onPreview: () => void; onPublish: () => void }) {
+function Editor({ project, theme, editorTab, selectedPageId, selectedSection, onBack, onTab, onPage, onSection, onSectionReorder, onUploadAsset, onUndo, onRedo, onAddPage, onAddSection, onProjectUpdate, onRenamePage, onDuplicatePage, onDeletePage, onMovePage, onCyclePageVisibility, onSectionAction, onTheme, onPreview, onPublish }: { project: Project; theme: Theme; editorTab: EditorTab; selectedPageId: string; selectedSection: string; onBack: () => void; onTab: (tab: EditorTab) => void; onPage: (id: string) => void; onSection: (section: string) => void; onSectionReorder: (draggedSection: string, targetSection: string) => void; onUploadAsset: (file: File) => void; onUndo: () => void; onRedo: () => void; onAddPage: () => void; onAddSection: (sectionName?: string) => void; onProjectUpdate: (field: 'title' | 'date' | 'location' | 'tagline' | 'description' | 'ctaLabel', value: string) => void; onRenamePage: (pageId: string) => void; onDuplicatePage: (pageId: string) => void; onDeletePage: (pageId: string) => void; onMovePage: (pageId: string, direction: 'up' | 'down') => void; onCyclePageVisibility: (pageId: string) => void; onSectionAction: (sectionName: string, action: 'duplicate' | 'delete' | 'up' | 'down') => void; onTheme: (id: string) => void; onPreview: () => void; onPublish: () => void }) {
   const selectedPage = project.pages.find((page) => page.id === selectedPageId) ?? project.pages[0]
   return (
     <div className="editor-layout">
@@ -871,11 +956,11 @@ function Editor({ project, theme, editorTab, selectedPageId, selectedSection, on
       <header className="editor-topbar framer-toolbar">
         <div className="framer-toolbar-left"><button type="button" className="canvas-menu" onClick={() => notify('Canvas actif : utilisez le zoom et les calques pour naviguer.')}><BrandMark /><span>Canvas</span><Icon name="chevron-down" size={13} /></button><span className="toolbar-divider" /><IconButton name="plus" label="Ajouter une section" size={17} onClick={onAddSection} /><IconButton name="layout" label="Ouvrir le builder" size={17} onClick={() => onTab('build')} /><IconButton name="type" label="Ajouter du texte" size={17} onClick={() => notify('Cliquez directement sur un texte du canvas pour l’éditer.')} /><span className="toolbar-divider" /><div className="editor-tabs compact-tabs"><button type="button" className={editorTab === 'structure' ? 'active' : ''} onClick={() => onTab('structure')}><Icon name="layers" size={14} /><span>Structure</span></button><button type="button" className={editorTab === 'design' ? 'active' : ''} onClick={() => onTab('design')}><Icon name="palette" size={14} /><span>Design</span></button><button type="button" className={editorTab === 'build' ? 'active' : ''} onClick={() => onTab('build')}><Icon name="layout" size={14} /><span>Build</span></button></div></div>
         <div className="framer-toolbar-center"><strong>{project.title}</strong><span className="main-branch">⌘ main</span></div>
-        <div className="editor-actions"><span className="saved-state"><span className="saved-dot" />Enregistré</span><IconButton name="undo" label="Annuler" size={16} onClick={() => notify('Historique : aucune modification à annuler dans cette V0.')} /><IconButton name="redo" label="Rétablir" size={16} onClick={() => notify('Historique : aucune modification à rétablir dans cette V0.')} /><span className="topbar-divider" /><button type="button" className="editor-preview-button" onClick={onPreview}><Icon name="play" size={14} />Aperçu</button><button type="button" className="invite-button" onClick={() => notify('Le partage d’équipe sera disponible avec les collaborateurs.')}>Inviter</button><button type="button" className="publish-button" onClick={onPublish}>Publier <Icon name="arrow-right" size={15} /></button><div className="editor-avatar">ML</div></div>
+        <div className="editor-actions"><span className="saved-state"><span className="saved-dot" />Enregistré</span><IconButton name="undo" label="Annuler" size={16} onClick={onUndo} /><IconButton name="redo" label="Rétablir" size={16} onClick={onRedo} /><span className="topbar-divider" /><button type="button" className="editor-preview-button" onClick={onPreview}><Icon name="play" size={14} />Aperçu</button><button type="button" className="invite-button" onClick={() => notify('Le partage d’équipe sera disponible avec les collaborateurs.')}>Inviter</button><button type="button" className="publish-button" onClick={onPublish}>Publier <Icon name="arrow-right" size={15} /></button><div className="editor-avatar">ML</div></div>
       </header>
       {editorTab === 'structure' && <StructureView project={project} selectedPageId={selectedPageId} onPage={onPage} onAddPage={onAddPage} onTab={onTab} onPreview={onPreview} onRenamePage={onRenamePage} onDuplicatePage={onDuplicatePage} onDeletePage={onDeletePage} onMovePage={onMovePage} onCyclePageVisibility={onCyclePageVisibility} />}
       {editorTab === 'design' && <DesignView project={project} theme={theme} onTheme={onTheme} onTab={onTab} />}
-      {editorTab === 'build' && <BuilderView project={project} theme={theme} selectedPage={selectedPage} selectedSection={selectedSection} onPage={onPage} onSection={onSection} onAddPage={onAddPage} onAddSection={onAddSection} onProjectUpdate={onProjectUpdate} onSectionAction={onSectionAction} onPreview={onPreview} />}
+      {editorTab === 'build' && <BuilderView project={project} theme={theme} selectedPage={selectedPage} selectedSection={selectedSection} onPage={onPage} onSection={onSection} onSectionReorder={onSectionReorder} onUploadAsset={onUploadAsset} onAddPage={onAddPage} onAddSection={onAddSection} onProjectUpdate={onProjectUpdate} onSectionAction={onSectionAction} onPreview={onPreview} />}
     </div>
   )
 }
@@ -930,7 +1015,7 @@ function InlineEditable({ value, onCommit, className = '', placeholder = 'Clique
   return <span role="button" tabIndex={0} className={`inline-editable ${className}`} title="Cliquer pour éditer" onClick={(event) => { event.stopPropagation(); setDraft(value); setEditing(true) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDraft(value); setEditing(true) } }}>{value || placeholder}</span>
 }
 
-function BuilderView({ project, theme, selectedPage, selectedSection, onPage, onSection, onAddPage, onAddSection, onProjectUpdate, onSectionAction, onPreview }: { project: Project; theme: Theme; selectedPage: Page; selectedSection: string; onPage: (id: string) => void; onSection: (section: string) => void; onAddPage: () => void; onAddSection: (sectionName?: string) => void; onProjectUpdate: (field: 'title' | 'date' | 'location' | 'tagline' | 'description' | 'ctaLabel', value: string) => void; onSectionAction: (sectionName: string, action: 'duplicate' | 'delete' | 'up' | 'down') => void; onPreview: () => void }) {
+function BuilderView({ project, theme, selectedPage, selectedSection, onPage, onSection, onSectionReorder, onUploadAsset, onAddPage, onAddSection, onProjectUpdate, onSectionAction, onPreview }: { project: Project; theme: Theme; selectedPage: Page; selectedSection: string; onPage: (id: string) => void; onSection: (section: string) => void; onSectionReorder: (draggedSection: string, targetSection: string) => void; onUploadAsset: (file: File) => void; onAddPage: () => void; onAddSection: (sectionName?: string) => void; onProjectUpdate: (field: 'title' | 'date' | 'location' | 'tagline' | 'description' | 'ctaLabel', value: string) => void; onSectionAction: (sectionName: string, action: 'duplicate' | 'delete' | 'up' | 'down') => void; onPreview: () => void }) {
   const [panelMode, setPanelMode] = useState<'agent' | 'style' | 'content'>('agent')
   const [leftMode, setLeftMode] = useState<'pages' | 'layers' | 'assets'>('pages')
   const [zoom, setZoom] = useState(50)
@@ -938,7 +1023,7 @@ function BuilderView({ project, theme, selectedPage, selectedSection, onPage, on
   const sectionOptions = ['Hero événement', 'Agenda', 'Galerie', 'Lieu & accès', 'FAQ', 'Formulaire RSVP', 'Appel à l’action', 'Livre d’or']
 
   return <div className="framer-editor-body">
-    <BuilderLeftPanel project={project} selectedPage={selectedPage} selectedSection={selectedSection} leftMode={leftMode} onMode={setLeftMode} onPage={onPage} onSection={(section) => { onSection(section); setPanelMode('style') }} onAddPage={onAddPage} onAddSection={() => setShowSectionLibrary(true)} onSectionAction={onSectionAction} />
+    <BuilderLeftPanel project={project} selectedPage={selectedPage} selectedSection={selectedSection} leftMode={leftMode} onMode={setLeftMode} onPage={onPage} onUploadAsset={onUploadAsset} onSectionReorder={onSectionReorder} onSection={(section) => { onSection(section); setPanelMode('style') }} onAddPage={onAddPage} onAddSection={() => setShowSectionLibrary(true)} onSectionAction={onSectionAction} />
     <BuilderCanvas project={project} theme={theme} selectedPage={selectedPage} selectedSection={selectedSection} zoom={zoom} onZoom={setZoom} showSectionLibrary={showSectionLibrary} sectionOptions={sectionOptions} onToggleSectionLibrary={() => setShowSectionLibrary((current) => !current)} onCloseSectionLibrary={() => setShowSectionLibrary(false)} onAddSection={onAddSection} onSection={(section) => { onSection(section); setPanelMode('style') }} onProjectUpdate={onProjectUpdate} onPreview={onPreview} />
     <aside className="framer-right-panel">
       <div className="framer-right-tabs"><button type="button" className={panelMode === 'agent' ? 'active' : ''} onClick={() => setPanelMode('agent')}>Agent</button><button type="button" className={panelMode === 'style' ? 'active' : ''} onClick={() => setPanelMode('style')}>Style</button><button type="button" className={panelMode === 'content' ? 'active' : ''} onClick={() => setPanelMode('content')}>Content</button></div>
@@ -947,8 +1032,8 @@ function BuilderView({ project, theme, selectedPage, selectedSection, onPage, on
   </div>
 }
 
-function BuilderLeftPanel({ project, selectedPage, selectedSection, leftMode, onMode, onPage, onSection, onAddPage, onAddSection, onSectionAction }: { project: Project; selectedPage: Page; selectedSection: string; leftMode: 'pages' | 'layers' | 'assets'; onMode: (mode: 'pages' | 'layers' | 'assets') => void; onPage: (id: string) => void; onSection: (section: string) => void; onAddPage: () => void; onAddSection: () => void; onSectionAction: (sectionName: string, action: 'duplicate' | 'delete' | 'up' | 'down') => void }) {
-  return <aside className="framer-left-panel"><div className="framer-panel-tabs"><button type="button" className={leftMode === 'pages' ? 'active' : ''} onClick={() => onMode('pages')}><Icon name="layers" size={15} />Pages</button><button type="button" className={leftMode === 'layers' ? 'active' : ''} onClick={() => onMode('layers')}><Icon name="grip" size={15} />Layers</button><button type="button" className={leftMode === 'assets' ? 'active' : ''} onClick={() => onMode('assets')}><Icon name="image" size={15} />Assets</button></div><label className="framer-search"><Icon name="search" size={15} /><input placeholder="Search..." /></label>{leftMode === 'pages' && <><div className="framer-panel-section-title"><span>Design</span><IconButton name="plus" label="Ajouter un élément" size={15} onClick={() => notify('Utilisez les blocs pour enrichir la page.')} /></div><div className="framer-tool-row"><button type="button" onClick={() => notify('Cliquez sur un texte du canvas pour l’éditer directement.')}><Icon name="type" size={15} /><span>Text</span></button><button type="button" onClick={() => notify('La bibliothèque média sera connectée à vos assets.')}><Icon name="image" size={15} /><span>Media</span></button><button type="button" onClick={onAddSection}><Icon name="layout" size={15} /><span>Section</span></button></div><div className="framer-panel-section-title pages-title"><span>Pages</span><IconButton name="plus" label="Ajouter une page" size={15} onClick={onAddPage} /></div><div className="framer-page-list">{project.pages.map((page) => <button type="button" key={page.id} className={`framer-page-item ${selectedPage.id === page.id ? 'active' : ''}`} onClick={() => onPage(page.id)}><span className="framer-page-icon"><Icon name={page.icon} size={14} /></span><span>{page.name}</span>{page.id === 'home' && <span className="framer-home-glyph">⌂</span>}</button>)}</div><button type="button" className="framer-add-page" onClick={onAddPage}><Icon name="plus" size={14} />Add page</button></>}{leftMode === 'layers' && <><div className="framer-panel-section-title"><span>{selectedPage.name} layers</span><IconButton name="plus" label="Ajouter une section" size={15} onClick={onAddSection} /></div><div className="framer-layer-list">{selectedPage.sections.map((section, index) => <div key={`${section}-${index}`} className={`framer-layer-item ${selectedSection === section ? 'active' : ''}`}><button type="button" className="layer-select" onClick={() => onSection(section)}><Icon name="grip" size={13} /><span>{section}</span></button><div className="layer-actions"><button type="button" onClick={() => onSectionAction(section, 'up')} aria-label="Monter"><Icon name="chevron-left" size={11} /></button><button type="button" onClick={() => onSectionAction(section, 'down')} aria-label="Descendre"><Icon name="chevron-right" size={11} /></button><button type="button" onClick={() => onSectionAction(section, 'duplicate')} aria-label="Dupliquer"><Icon name="copy" size={11} /></button><button type="button" onClick={() => onSectionAction(section, 'delete')} aria-label="Supprimer"><Icon name="trash" size={11} /></button></div></div>)}</div><button type="button" className="framer-add-page" onClick={onAddSection}><Icon name="plus" size={14} />Add section</button></>}{leftMode === 'assets' && <><div className="framer-panel-section-title"><span>Project assets</span><IconButton name="plus" label="Ajouter un média" size={15} /></div><div className="framer-assets-grid"><button type="button" className="asset-placeholder" onClick={() => notify('Import média bientôt disponible.')}><Icon name="plus" size={16} /><span>Upload</span></button><div className="asset-tile asset-tile-one"><span>IMG / 01</span></div><div className="asset-tile asset-tile-two"><span>IMG / 02</span></div><div className="asset-tile asset-tile-three"><span>IMG / 03</span></div></div></>}<div className="framer-left-footer"><button type="button" onClick={() => notify('Les réglages de l’espace seront disponibles ici.')}><Icon name="settings" size={15} />Settings</button><span>⌘ K</span></div></aside>
+function BuilderLeftPanel({ project, selectedPage, selectedSection, leftMode, onMode, onPage, onUploadAsset, onSectionReorder, onSection, onAddPage, onAddSection, onSectionAction }: { project: Project; selectedPage: Page; selectedSection: string; leftMode: 'pages' | 'layers' | 'assets'; onMode: (mode: 'pages' | 'layers' | 'assets') => void; onPage: (id: string) => void; onUploadAsset: (file: File) => void; onSectionReorder: (draggedSection: string, targetSection: string) => void; onSection: (section: string) => void; onAddPage: () => void; onAddSection: () => void; onSectionAction: (sectionName: string, action: 'duplicate' | 'delete' | 'up' | 'down') => void }) {
+  return <aside className="framer-left-panel"><div className="framer-panel-tabs"><button type="button" className={leftMode === 'pages' ? 'active' : ''} onClick={() => onMode('pages')}><Icon name="layers" size={15} />Pages</button><button type="button" className={leftMode === 'layers' ? 'active' : ''} onClick={() => onMode('layers')}><Icon name="grip" size={15} />Layers</button><button type="button" className={leftMode === 'assets' ? 'active' : ''} onClick={() => onMode('assets')}><Icon name="image" size={15} />Assets</button></div><label className="framer-search"><Icon name="search" size={15} /><input placeholder="Search..." /></label>{leftMode === 'pages' && <><div className="framer-panel-section-title"><span>Design</span><IconButton name="plus" label="Ajouter un élément" size={15} onClick={() => notify('Utilisez les blocs pour enrichir la page.')} /></div><div className="framer-tool-row"><button type="button" onClick={() => notify('Cliquez sur un texte du canvas pour l’éditer directement.')}><Icon name="type" size={15} /><span>Text</span></button><button type="button" onClick={() => notify('La bibliothèque média sera connectée à vos assets.')}><Icon name="image" size={15} /><span>Media</span></button><button type="button" onClick={onAddSection}><Icon name="layout" size={15} /><span>Section</span></button></div><div className="framer-panel-section-title pages-title"><span>Pages</span><IconButton name="plus" label="Ajouter une page" size={15} onClick={onAddPage} /></div><div className="framer-page-list">{project.pages.map((page) => <button type="button" key={page.id} className={`framer-page-item ${selectedPage.id === page.id ? 'active' : ''}`} onClick={() => onPage(page.id)}><span className="framer-page-icon"><Icon name={page.icon} size={14} /></span><span>{page.name}</span>{page.id === 'home' && <span className="framer-home-glyph">⌂</span>}</button>)}</div><button type="button" className="framer-add-page" onClick={onAddPage}><Icon name="plus" size={14} />Add page</button></>}{leftMode === 'layers' && <><div className="framer-panel-section-title"><span>{selectedPage.name} layers</span><IconButton name="plus" label="Ajouter une section" size={15} onClick={onAddSection} /></div><div className="framer-layer-list">{selectedPage.sections.map((section, index) => <div key={`${section}-${index}`} draggable onDragStart={(event) => { event.dataTransfer.setData('text/atelier-section', section); event.dataTransfer.effectAllowed = 'move' }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const dragged = event.dataTransfer.getData('text/atelier-section'); if (dragged) onSectionReorder(dragged, section) }} className={`framer-layer-item ${selectedSection === section ? 'active' : ''}`}><button type="button" className="layer-select" onClick={() => onSection(section)}><Icon name="grip" size={13} /><span>{section}</span></button><div className="layer-actions"><button type="button" onClick={() => onSectionAction(section, 'up')} aria-label="Monter"><Icon name="chevron-left" size={11} /></button><button type="button" onClick={() => onSectionAction(section, 'down')} aria-label="Descendre"><Icon name="chevron-right" size={11} /></button><button type="button" onClick={() => onSectionAction(section, 'duplicate')} aria-label="Dupliquer"><Icon name="copy" size={11} /></button><button type="button" onClick={() => onSectionAction(section, 'delete')} aria-label="Supprimer"><Icon name="trash" size={11} /></button></div></div>)}</div><button type="button" className="framer-add-page" onClick={onAddSection}><Icon name="plus" size={14} />Add section</button></>}{leftMode === 'assets' && <><div className="framer-panel-section-title"><span>Project assets</span><label className="asset-add-button" aria-label="Ajouter un média"><Icon name="plus" size={15} /><input type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) onUploadAsset(file); event.currentTarget.value = '' }} /></label></div><div className="framer-assets-grid"><label className="asset-placeholder"><Icon name="plus" size={16} /><span>Upload</span><input type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) onUploadAsset(file); event.currentTarget.value = '' }} /></label>{(project.assets ?? []).map((asset) => <div className="asset-tile asset-tile-uploaded" key={asset.id} style={{ backgroundImage: `url(${asset.url})` }} title={asset.name}><span>{asset.name}</span></div>)}<div className="asset-tile asset-tile-one"><span>IMG / 01</span></div><div className="asset-tile asset-tile-two"><span>IMG / 02</span></div></div></>}<div className="framer-left-footer"><button type="button" onClick={() => notify('Les réglages de l’espace seront disponibles ici.')}><Icon name="settings" size={15} />Settings</button><span>⌘ K</span></div></aside>
 }
 
 function BuilderCanvas({ project, theme, selectedPage, selectedSection, zoom, onZoom, showSectionLibrary, sectionOptions, onToggleSectionLibrary, onCloseSectionLibrary, onAddSection, onSection, onProjectUpdate, onPreview }: { project: Project; theme: Theme; selectedPage: Page; selectedSection: string; zoom: number; onZoom: (value: number) => void; showSectionLibrary: boolean; sectionOptions: string[]; onToggleSectionLibrary: () => void; onCloseSectionLibrary: () => void; onAddSection: (sectionName?: string) => void; onSection: (section: string) => void; onProjectUpdate: (field: 'title' | 'date' | 'location' | 'tagline' | 'description' | 'ctaLabel', value: string) => void; onPreview: () => void }) {
